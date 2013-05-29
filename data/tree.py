@@ -53,8 +53,11 @@ class FastRBTree(bintrees.FastRBTree, MetaTree):
     pass
 
 
-if __name__ == '__main__':
+def main():
     m = zip(range(10), "abcdefghijklmn")
     print BinaryTree(m).pprint()
     print AVLTree(m).pprint()
     print RBTree(m).pprint()
+
+if __name__ == '__main__':
+    main()
