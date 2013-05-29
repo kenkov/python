@@ -5,6 +5,7 @@ import bintrees
 
 
 class MetaTree(object):
+    """Mix-in class"""
     def pprint(self):
         root = self.root
         return self._iter_print(root, root.left, root.right, 1)
