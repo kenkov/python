@@ -22,6 +22,8 @@ class GraphSearchWrapper(object):
 
     def search(self, name, start_node, verbose=False):
         color = {}
+        prev = {}
+        cost = {}
         deq = deque([])
         # initialize
         for key in self._graph:
@@ -29,20 +31,40 @@ class GraphSearchWrapper(object):
         # add the start node to deque
         deq.append(start_node)
         color[start_node] = "g"
+        prev[start_node] = 'root'
+        cost[start_node] = 0
 
         while(deq):
             if verbose:
                 print deq, color
             node = self._pop(deq)
             if node == name:
-                return True
+                return {'result': True,
+                        'route': self._route(prev, node),
+                        'color': color,
+                        'cost': cost,
+                        'deq': deq}
             else:
                 for v in [v for v in self._graph.neighbors(node)
                           if color[v] == "w"]:
                     color[v] = "g"
+                    prev[v] = node
+                    cost[v] = cost[node] + 1
                     deq.append(v)
             color[node] = "b"
-        return False
+        return {'result': False,
+                'route': None,
+                'color': color,
+                'cost': cost,
+                'deq': deq}
+
+    def _route(self, prev, node):
+        n = node
+        route = deque([])
+        while (n != 'root'):
+            route.append(n)
+            n = prev[n]
+        return route
 
 
 class DFS(GraphSearchWrapper):
@@ -57,9 +79,30 @@ class WFS(GraphSearchWrapper):
 
 if __name__ == '__main__':
     import networkx as nx
-    g = nx.Graph([(1, 2), (1, 3), (2, 3),
-                  (3, 4), (4, 5)])
-    print DFS(g).search(5, 1, verbose=True)
-    print WFS(g).search(5, 1, verbose=True)
-    print DFS(g).search(2, 1, verbose=True)
-    print WFS(g).search(2, 1, verbose=True)
+    from pprint import pprint
+    g = nx.Graph()
+    g.add_weighted_edges_from([
+        ('a', 't', 118),
+        ('t', 'l', 111),
+        ('l', 'm', 70),
+        ('m', 'd', 75),
+        ('d', 'c', 120),
+        ('c', 'r', 146),
+        ('c', 'p', 138),
+        ('r', 'p', 97),
+        ('r', 's', 80),
+        ('a', 's', 140),
+        ('p', 'b', 101),
+        ('b', 'g', 90),
+        ('b', 'u', 85),
+        ('b', 'f', 211),
+        ('s', 'f', 99),
+        ('a', 'z', 75),
+        ('z', 'o', 71),
+        ('o', 's', 151)])
+    start = 'a'
+    goal = 'b'
+    pprint(DFS(g).search(start, goal))  # , verbose=True)
+    pprint(WFS(g).search(start, goal))  # , verbose=True)
+    pprint(DFS(g).search(start, goal))  # , verbose=True)
+    pprint(WFS(g).search(start, goal))  # , verbose=True)
