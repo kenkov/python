@@ -11,6 +11,11 @@ class Container(object):
 
     def __init__(self, container):
         self._container = container
+        self.color = {}
+        self.prev = {}
+        self.cost = {}
+        self.g = {}
+        self.f = {}
 
     def __getattr__(self, name):
         getattr(self._container, name)
@@ -46,52 +51,52 @@ class GraphSearch(object):
     def _container(self):
         pass
 
-    def _f_func(self, node):
+    def _f_func(self, node, container):
         """If you want to implement A* algorithm, you must
         implement this methos in the inherited class"""
         return 0
 
+    def _g_func(self, node, container):
+        """If you want to implement A* algorithm, you must
+        implement this methos in the inherited class"""
+        return container.cost[container.prev[node]] + 1
+
     def search(self, name, start_node, verbose=False):
-        color = {}
-        prev = {}
-        cost = {}
-        g = {}
-        f = {}
         con = self._container()
         # initialize
         for key in self._graph:
-            color[key] = "w"
+            con.color[key] = "w"
         # add the start node to deque
-        color[start_node] = "g"
-        prev[start_node] = 'root'
-        cost[start_node] = 0
-        g[start_node] = 0
-        f[start_node] = self._f_func(start_node)
-        con.push(start_node, cost[start_node])
+        con.color[start_node] = "g"
+        con.prev[start_node] = 'root'
+        con.cost[start_node] = 0
+        con.g[start_node] = 0
+        con.f[start_node] = self._f_func(start_node, con)
+        con.push(start_node, con.cost[start_node])
 
         while(not con.is_empty()):
 
             node, ct = con.pop()
             if node == name:
                 return {'result': True,
-                        'route': self._route(prev, node),
-                        'color': color,
-                        'cost': cost,
+                        'route': self._route(con.prev, node),
+                        'color': con.color,
+                        'cost': con.cost,
                         'container': con}
             else:
                 for v in [v for v in self._graph.neighbors(node)
-                          if color[v] == "w"]:
-                    color[v] = "g"
-                    prev[v] = node
-                    g[v] = ct + g[node]
-                    f[v] = self._f_func(start_node)
-                    cost[v] = g[v] + f[v]
-                    con.push(v, cost[v])
-            color[node] = "b"
+                          if con.color[v] == "w"]:
+                    con.color[v] = "g"
+                    con.prev[v] = node
+                    con.g[v] = self._g_func(v, con)
+                    con.f[v] = self._f_func(v, con)
+                    con.cost[v] = con.g[v] + con.f[v]
+                    con.push(v, con.cost[v])
+            con.color[node] = "b"
         return {'result': False,
                 'route': None,
-                'color': color,
-                'cost': cost,
+                'color': con.color,
+                'cost': con.cost,
                 'container': con}
 
     def _route(self, prev, node):
@@ -160,8 +165,9 @@ class AStar(GraphSearch):
     def _container(self):
         return AStarContainer()
 
-    def _f_func(self, node):
-        return 0
+    def _g_func(self, node, container):
+        weight = self._graph[container.prev[node]][node]['weight']
+        return container.cost[container.prev[node]] + weight
 
 
 if __name__ == '__main__':
