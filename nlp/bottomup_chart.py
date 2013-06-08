@@ -4,144 +4,268 @@
 from __future__ import division
 from collections import deque, defaultdict
 import re
+import abc
+import itertools
 
 
-def tdchart(grammar, sent, verbose=False):
-    # grammar dicts
-    gr_left = defaultdict(list)
-    gr_right = defaultdict(list)
-    for item in grammar:
-        gr_left[item[0]].append(item)
-        gr_right[item[1]].append(item)
+class Adjenda(object):
+    __metaclass__ = abc.ABCMeta
 
-    # adjenda
-    adjenda = deque([])
-    # init_ads = {"'likes'": ('V', "'likes'"),
-    #             "'coffee'": ('NP', "'coffee'"),
-    #             "'Lee'": ('NP', "'Lee'")}
+    def __init__(self, container):
+        self._container = container
+        self._adjenda_set = set()
 
-    ## MUST MODIFY for duplicated v
-    init_ads = defaultdict(list)
-    for k, v in terminals(grammar):
-        init_ads[v].append((k, v))
+    def __getattr__(self, name):
+        getattr(self._container, name)
 
-    # initialize
-    for i, w in enumerate(sent):
-        for start, word in init_ads[w]:
-            adjenda.append([start, [word], [], (i, i+1)])
-    #print adjenda
-    chart = defaultdict(list)
-    chart_init = defaultdict(dict)
-    chart_after = defaultdict(dict)
-    while adjenda:
-        init, before, after, (start, end) = adjenda.popleft()
-        if start == end:
-            print prety_print(len(sent), start, end, "self", size=10),
-        elif after:
-            print prety_print(len(sent), start, end, "incomp", size=10),
-        else:
-            print prety_print(len(sent), start, end, "comp", size=10),
+    @property
+    def container(self):
+        return self._container
 
-        print "  arc:", "{}->{}.{}, ({}, {})".format(init,
-                                                     before,
-                                                     after,
-                                                     start,
-                                                     end)
-        # add to chart
-        chart[(start, end)].append([init, before, after])
-        if (start, end) in chart_init[init]:
-            chart_init[init][(start, end)].append([init, before, after])
-        else:
-            chart_init[init][(start, end)] = [[init, before, after]]
-        if after:
-            if after[0] in chart_after[init]:
-                chart_after[after[0]][(start, end)].append(
-                    [init, before, after])
+    @abc.abstractmethod
+    def _push(self, item):
+        pass
+
+    @abc.abstractmethod
+    def _pop(self):
+        pass
+
+    def push(self, item):
+        if item not in self._adjenda_set:
+            self._push(item)
+            self._adjenda_set.add(item)
+
+    def pop(self):
+        item = self._pop()
+        self._adjenda_set.remove(item)
+        return item
+
+    @abc.abstractmethod
+    def is_empty(self):
+        pass
+
+
+class ChartParser(object):
+    def __init__(self, grammar):
+        self._grammar = grammar
+
+    @abc.abstractmethod
+    def _deq(self):
+        pass
+
+    def terminals(self, grammar):
+        """Collect word_names which has a "N -> 'word_name'" shape from
+        grammar."""
+        re_obj = re.compile(ur"^'\w+'$")
+        ret = []
+        for item in grammar:
+            if re_obj.search(item[1]):
+                ret.append(item)
+        return ret
+
+    def _dict_set_factory(self):
+        '''define a local function for uniform probability initialization'''
+        return itertools.repeat(defaultdict(set)).next
+
+    def search(self, sent, verbose=False):
+        adjenda = self._deq()
+        # grammar dicts
+        #gr_left = defaultdict(list)
+        gr_right = defaultdict(list)
+        for item in self._grammar:
+            #gr_left[item[0]].append(item)
+            gr_right[item[1]].append(item)
+
+        # initial arcs
+        init_arcs = defaultdict(dict)
+        for k, v in self.terminals(self._grammar):
+            init_arcs[v][k] = v
+
+        # initialize
+        for i, w in enumerate(sent):
+            for lefths, word in init_arcs[w].items():
+                adjenda.push((lefths, tuple([word]), tuple([]), (i, i+1)))
+
+        # initialize chart
+        chart = defaultdict(set)
+        chart_init = defaultdict(self._dict_set_factory())
+        chart_after = defaultdict(self._dict_set_factory())
+        while not adjenda.is_empty():
+            init, before, after, (start, end) = adjenda.pop()
+            if start == end:
+                arc = "self"
+            elif after:
+                arc = "incomp"
             else:
-                chart_after[after[0]][(start, end)] = [[init, before, after]]
-
-        # active edge
-        if after:
-            y = after[0]
-            for (s, e), arcs in chart_init[y].items():
-                if s == end:
-                    for _ in arcs:
-                        adjenda.append([init,
-                                        before + [y],
-                                        after[1:],
-                                        (start, e)])
-                        if verbose:
-                            print "    add:", "{}->{}.{}, ({}, {})".format(
-                                init,
-                                before + [y],
-                                after[1:],
-                                start, e)
-        else:
-            for (s, e), arcs in chart_after[init].items():
-                if e == start:
-                    for arc in arcs:
-                        adjenda.append([arc[0],
-                                        arc[1] + [arc[2][0]],
-                                        arc[2][1:],
-                                        (s, end)])
+                arc = "comp"
+            print self.pretty_print(init, before, after, sent, start, end, arc,
+                                    size=10)
+            # add to chart
+            # Use set to remove deplicated items
+            chart[(start, end)].add((init, before, after))
+            chart_init[init][(start, end)].add((init, before, after))
+            if after:
+                #print "    after add {} -> {}・{}".format(init, before, after)
+                #print after[0]
+                chart_after[after[0]][(start, end)].add((init,
+                                                        before,
+                                                        after))
+            # active edge
+            if after:
+                y = after[0]
+                for (s, e), arcs in chart_init[y].items():
+                    if s == end:
+                        for _ in [arc for arc in arcs if not arc[2]]:
+                            adjenda.push((init,
+                                          tuple(before + tuple([y])),
+                                          tuple(after[1:]),
+                                          (start, e)))
+                            if verbose:
+                                print "    add:", "{}->{}.{}, ({}, {})".format(
+                                    init,
+                                    tuple(before + tuple([y])),
+                                    tuple(after[1:]),
+                                    start, e)
+            else:
+                #print chart_after
+                #print chart
+                for (s, e), arcs in chart_after[init].items():
+                    if e == start:
+                        for arc in arcs:
+                            adjenda.push((arc[0],
+                                          tuple(arc[1] + tuple([arc[2][0]])),
+                                          tuple(arc[2][1:]),
+                                          (s, end)))
+                            if verbose:
+                                print "    add", "{}->{}.{}, ({}, {})".format(
+                                    arc[0],
+                                    tuple(arc[1] + tuple([arc[2][0]])),
+                                    tuple(arc[2][1:]),
+                                    s, end)
+            # recommend new arc
+            if not after:
+                if init in gr_right:
+                    for gr in gr_right[init]:
+                        adjenda.push((gr[0],
+                                      tuple([]),
+                                      tuple(gr[1:]),
+                                      (start, start)))
                         if verbose:
                             print "    add", "{}->{}.{}, ({}, {})".format(
-                                arc[0],
-                                arc[1] + [arc[2][0]],
-                                arc[2][1:],
-                                s, end)
-        # recommend new arc
-        if not after:
-            if init in gr_right:
-                for gr in gr_right[init]:
-                    adjenda.append([gr[0],
-                                    [],
-                                    gr[1:],
-                                    (start, start)])
-                    if verbose:
-                        print "    add", "{}->{}.{}, ({}, {})".format(
-                            gr[0],
-                            [],
-                            gr[1:],
-                            start, start)
+                                gr[0],
+                                [],
+                                gr[1:],
+                                start, start)
+        return adjenda
+
+    def _pretty_print(self, ln, start, end, arc, size=5):
+        default = "." + " " * (size - 1)
+        comp = "." + "=" * (size - 1)
+        incomp = "." + "-" * (size - 2) + ">"
+        incomp_not_finished = "." + "-" * (size - 1)
+        self = "." + ">" + " " * (size - 2)
+        if not arc in ["comp", "incomp", "self"]:
+            raise Exception()
+        if arc == "self":
+            s = default * start + self + default * (ln - end - 1)
+        elif arc == "comp":
+            s = default * start + comp * (end - start) + default * (ln - end)
+        elif arc == "incomp":
+            s = default * start + incomp_not_finished \
+                * (end - start - 1) + incomp + default * (ln - end)
+        return s + "."
+
+    def pretty_print(self, init, before, after,
+                     sent, start, end, arc, size=10):
+        if arc == "self":
+            s = self._pretty_print(
+                len(sent), start, end, "self", size)
+        elif arc == "incomp":
+            s = self._pretty_print(
+                len(sent), start, end, "incomp", size)
+        elif arc == "comp":
+            s = self._pretty_print(
+                len(sent), start, end, "comp", size=10)
+        else:
+            raise Exception('Specify "self", "comp", or "incomp"')
+        detail = ("({}, {}) : " + "{} -> {}・{}").format(
+            start,
+            end,
+            init,
+            " ".join(before),
+            " ".join(after))
+        return "{}  {}".format(s, detail)
 
 
-def terminals(grammar):
-    re_obj = re.compile(ur"^'\w+'$")
-    ret = []
-    for item in grammar:
-        if re_obj.search(item[1]):
-            ret.append(item)
-    return ret
+class QueueAdjenda(Adjenda):
+    def __init__(self):
+        Adjenda.__init__(self, deque([]))
+
+    def _push(self, item):
+        return self._container.append(item)
+
+    def _pop(self):
+        return self._container.popleft()
+
+    def is_empty(self):
+        return False if self._container else True
 
 
-def prety_print(ln, start, end, arc, size=5):
-    default = "." + " " * (size - 1)
-    comp = "." + "=" * (size - 1)
-    incomp = "." + "-" * (size - 2) + ">"
-    self = "." + ">" + " " * (size - 2)
-    if not arc in ["comp", "incomp", "self"]:
-        raise Exception()
-    if arc == "self":
-        s = default * start + self + default * (ln - end - 1)
-    elif arc == "comp":
-        s = default * start + comp * (end - start) + default * (ln - end)
-    elif arc == "incomp":
-        s = default * start + incomp * (end - start) + default * (ln - end)
-    return s + "."
+class StackAdjenda(Adjenda):
+    def __init__(self):
+        Adjenda.__init__(self, [])
+
+    def _push(self, item):
+        return self._container.append(item)
+
+    def _pop(self):
+        return self._container.pop()
+
+    def is_empty(self):
+        return False if self._container else True
+
+
+class BUChartParser(ChartParser):
+    def _deq(self):
+        return QueueAdjenda()
+
+
+class DepthBUChartParser(ChartParser):
+    def _deq(self):
+        return StackAdjenda()
+
+
+def test_terminals():
+    grammar = [["S", "NP", "VP"],
+               ["S", "NP", "VP", "NP"],
+               ["VP", "V", "NP"],
+               ["NP", "N"],
+               ["NP", "'Lee'"],
+               ["NP", "'coffee'"],
+               ["V", "'likes'"]]
+    parser = BUChartParser(grammar)
+    assert parser.terminals(grammar) == [['NP', "'Lee'"],
+                                        ['NP', "'coffee'"],
+                                        ['V', "'likes'"]]
 
 
 def main():
     grammar = [["S", "NP", "VP"],
+               ["S", "NP", "VP", "NP"],
                ["VP", "V", "NP"],
                ["NP", "N"],
                ["NP", "'Lee'"],
                ["NP", "'coffee'"],
                ["V", "'likes'"]]
     sent = ["".join(["'", w, "'"]) for w in "Lee likes coffee".split()]
-    tdchart(grammar, sent)
-    assert terminals(grammar) == [['NP', "'Lee'"],
-                                  ['NP', "'coffee'"],
-                                  ['V', "'likes'"]]
+    parser = BUChartParser(grammar)
+    res = parser.search(sent)
+    print res
+    dparser = DepthBUChartParser(grammar)
+    res = dparser.search(sent)
+    print res
+
+
 if __name__ == '__main__':
+    test_terminals()
     main()
