@@ -98,8 +98,8 @@ class ChartParser(object):
                 arc = "incomp"
             else:
                 arc = "comp"
-            print self.pretty_print(init, before, after, sent, start, end, arc,
-                                    size=10)
+            pretprit = self.pretty_print(init, before, after, sent,
+                                         start, end, arc, size=10)
             # add to chart
             # Use set to remove deplicated items
             chart[(start, end)].add((init, before, after))
@@ -121,11 +121,10 @@ class ChartParser(object):
                                           tuple(after[1:]),
                                           (start, e)))
                             if verbose:
-                                print "    add:", "{}->{}.{}, ({}, {})".format(
-                                    init,
-                                    tuple(before + tuple([y])),
-                                    tuple(after[1:]),
-                                    start, e)
+                                verbs = self._verbose(
+                                    s, e, arc[0], arc[1], arc[2],
+                                    start, end, init, before, after)
+
             else:
                 #print chart_after
                 #print chart
@@ -137,11 +136,10 @@ class ChartParser(object):
                                           tuple(arc[2][1:]),
                                           (s, end)))
                             if verbose:
-                                print "    add", "{}->{}.{}, ({}, {})".format(
-                                    arc[0],
-                                    tuple(arc[1] + tuple([arc[2][0]])),
-                                    tuple(arc[2][1:]),
-                                    s, end)
+                                verbs = self._verbose(
+                                    start, end, init, before, after,
+                                    s, e, arc[0], arc[1], arc[2])
+
             # recommend new arc
             if not after:
                 if init in gr_right:
@@ -151,12 +149,28 @@ class ChartParser(object):
                                       tuple(gr[1:]),
                                       (start, start)))
                         if verbose:
-                            print "    add", "{}->{}.{}, ({}, {})".format(
-                                gr[0],
-                                [],
-                                gr[1:],
-                                start, start)
+                            verbs = "add new arc"
+
+            if verbose:
+                print "{}  {}".format(pretprit, verbs)
+            else:
+                print pretprit
         return adjenda
+
+    def _verbose(self, start, end, init, before, after,
+                 _start, _end, _init, _before, _after):
+        lh = "({}, {}) {} -> {}・{}".format(
+            _start, _end,
+            _init,
+            " ".join(_before),
+            " ".join(_after))
+
+        rh = "({}, {}) {} -> {}・{}".format(
+            start, end,
+            init,
+            " ".join(before),
+            " ".join(after))
+        return "    merge {} , {}".format(lh, rh)
 
     def _pretty_print(self, ln, start, end, arc, size=5):
         default = "." + " " * (size - 1)
@@ -251,7 +265,6 @@ def test_terminals():
 
 def main():
     grammar = [["S", "NP", "VP"],
-               ["S", "NP", "VP", "NP"],
                ["VP", "V", "NP"],
                ["NP", "N"],
                ["NP", "'Lee'"],
@@ -259,10 +272,10 @@ def main():
                ["V", "'likes'"]]
     sent = ["".join(["'", w, "'"]) for w in "Lee likes coffee".split()]
     parser = BUChartParser(grammar)
-    res = parser.search(sent)
+    res = parser.search(sent, verbose=True)
     print res
     dparser = DepthBUChartParser(grammar)
-    res = dparser.search(sent)
+    res = dparser.search(sent, verbose=True)
     print res
 
 
