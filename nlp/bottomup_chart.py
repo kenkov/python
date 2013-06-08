@@ -5,7 +5,6 @@ from __future__ import division
 from collections import deque, defaultdict
 import re
 import abc
-import itertools
 
 
 class Adjenda(object):
@@ -63,10 +62,6 @@ class ChartParser(object):
                 ret.append(item)
         return ret
 
-    def _dict_set_factory(self):
-        '''define a local function for uniform probability initialization'''
-        return itertools.repeat(defaultdict(set)).next
-
     def search(self, sent, verbose=False):
         adjenda = self._deq()
         # grammar dicts
@@ -84,79 +79,131 @@ class ChartParser(object):
         # initialize
         for i, w in enumerate(sent):
             for lefths, word in init_arcs[w].items():
-                adjenda.push((lefths, tuple([word]), tuple([]), (i, i+1)))
+                fr = (lefths, tuple([]), tuple([word]), (i, i))
+                t = (word, tuple([]), tuple([]), (i, i+1))
+                adjenda.push((lefths, tuple([word]), tuple([]), (i, i+1),
+                              fr, t))
+                # print
+                pretprit = self.pretty_print(
+                    lefths, tuple([word]), tuple([]), sent,
+                    i, i+1, "comp", size=10)
+                """
+                if verbose:
+                    verbs = self._verbose(
+                        fr[3][0], fr[3][1], fr[0], fr[1], fr[2],
+                        t[3][0], t[3][1], t[0], t[1], t[2])
+                    print "{}  {}".format(pretprit, verbs)
+                else:
+                    print pretprit
+                """
 
         # initialize chart
         chart = defaultdict(set)
-        chart_init = defaultdict(self._dict_set_factory())
-        chart_after = defaultdict(self._dict_set_factory())
+        chart_init = defaultdict(lambda: defaultdict(set))
+        chart_after = defaultdict(lambda: defaultdict(set))
         while not adjenda.is_empty():
-            init, before, after, (start, end) = adjenda.pop()
+            init, before, after, (start, end), frm, to = adjenda.pop()
             if start == end:
                 arc = "self"
             elif after:
                 arc = "incomp"
             else:
                 arc = "comp"
-            print self.pretty_print(init, before, after, sent, start, end, arc,
-                                    size=10)
+            pretprit = self.pretty_print(init, before, after, sent,
+                                         start, end, arc, size=10)
+            if verbose:
+                verbs = self._verbose(
+                    frm[3][0], frm[3][1], frm[0], frm[1], frm[2],
+                    to[3][0], to[3][1], to[0], to[1], to[2])
+                print "{}  {}".format(pretprit, verbs)
+            else:
+                print pretprit
             # add to chart
             # Use set to remove deplicated items
             chart[(start, end)].add((init, before, after))
-            chart_init[init][(start, end)].add((init, before, after))
+            chart_init[init][(start, end)].add((init, before, after, frm, to))
+            """
+            print "chart_init[{}][({}, {})].add(({}, {}, {}, {}, {}))".format(
+                init, start, end, init, before, after, frm, to)
+            for item in chart_init[init][(start, end)]:
+                if item[0] != init:
+                    print chart_init['NP'][(start, end)]
+                    print chart_init['S'][(start, end)]
+                    assert item[0] == init, "{} != {}".format(item[0], init)
+            """
             if after:
                 #print "    after add {} -> {}・{}".format(init, before, after)
                 #print after[0]
                 chart_after[after[0]][(start, end)].add((init,
                                                         before,
-                                                        after))
+                                                        after,
+                                                         frm,
+                                                         to))
             # active edge
             if after:
                 y = after[0]
                 for (s, e), arcs in chart_init[y].items():
                     if s == end:
-                        for _ in [arc for arc in arcs if not arc[2]]:
+                        for arc in [arc for arc in arcs if not arc[2]]:
                             adjenda.push((init,
                                           tuple(before + tuple([y])),
                                           tuple(after[1:]),
-                                          (start, e)))
-                            if verbose:
-                                print "    add:", "{}->{}.{}, ({}, {})".format(
-                                    init,
-                                    tuple(before + tuple([y])),
-                                    tuple(after[1:]),
-                                    start, e)
+                                          (start, e),
+                                          (init, before, after, (start, end)),
+                                          (arc[0], arc[1], arc[2], (s, e))))
+                            """
+                            print "  if after"
+                            print " ", after[0], arc[0]
+                            """
+
             else:
                 #print chart_after
                 #print chart
                 for (s, e), arcs in chart_after[init].items():
                     if e == start:
-                        for arc in arcs:
+                        for arc in [arc for arc in arcs if arc[2]]:
                             adjenda.push((arc[0],
                                           tuple(arc[1] + tuple([arc[2][0]])),
                                           tuple(arc[2][1:]),
-                                          (s, end)))
-                            if verbose:
-                                print "    add", "{}->{}.{}, ({}, {})".format(
-                                    arc[0],
-                                    tuple(arc[1] + tuple([arc[2][0]])),
-                                    tuple(arc[2][1:]),
-                                    s, end)
+                                          (s, end),
+                                          (arc[0], arc[1], arc[2], (s, e)),
+                                          (init, before, after, (start, end))))
+                            """
+                            print "  after = []"
+                            print " ", arc[2][0], init
+                            """
+
             # recommend new arc
             if not after:
                 if init in gr_right:
                     for gr in gr_right[init]:
-                        adjenda.push((gr[0],
-                                      tuple([]),
-                                      tuple(gr[1:]),
-                                      (start, start)))
+                        adjenda.push(
+                            (gr[0],
+                             tuple([]),
+                             tuple(gr[1:]),
+                             (start, start),
+                             ("root", tuple([]), tuple([]), (-1, -1)),
+                             ("root", tuple([]), tuple([]), (-1, -1))))
+                        """
                         if verbose:
-                            print "    add", "{}->{}.{}, ({}, {})".format(
-                                gr[0],
-                                [],
-                                gr[1:],
-                                start, start)
+                            verbs = "add new arc"
+                        """
         return adjenda
+
+    def _verbose(self, start, end, init, before, after,
+                 _start, _end, _init, _before, _after):
+        rh = "({}, {}) {} -> {}・{}".format(
+            _start, _end,
+            _init,
+            " ".join(_before),
+            " ".join(_after))
+
+        lh = "({}, {}) {} -> {}・{}".format(
+            start, end,
+            init,
+            " ".join(before),
+            " ".join(after))
+        return "    merge {} , {}".format(lh, rh)
 
     def _pretty_print(self, ln, start, end, arc, size=5):
         default = "." + " " * (size - 1)
@@ -251,7 +298,7 @@ def test_terminals():
 
 def main():
     grammar = [["S", "NP", "VP"],
-               ["S", "NP", "VP", "NP"],
+               ["S", "NP", "V", "NP"],
                ["VP", "V", "NP"],
                ["NP", "N"],
                ["NP", "'Lee'"],
@@ -259,10 +306,10 @@ def main():
                ["V", "'likes'"]]
     sent = ["".join(["'", w, "'"]) for w in "Lee likes coffee".split()]
     parser = BUChartParser(grammar)
-    res = parser.search(sent)
+    res = parser.search(sent, verbose=True)
     print res
     dparser = DepthBUChartParser(grammar)
-    res = dparser.search(sent)
+    res = dparser.search(sent, verbose=True)
     print res
 
 
